@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Docker Swarm on CoreOS</title>
+  <meta name="description" content="Since Docker’s Swarm became stable with the release of Docker 1.9 last November, quite a few articles have been written discussing ways to setup a cluster fo...">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://maarten.vanderaart.org/docker/swarm/coreos/2016/04/18/docker-swarm-on-coreos.html">
+  <link rel="alternate" type="application/rss+xml" title="Oh noes, what have you done now?" href="http://maarten.vanderaart.org/feed.xml">
+  <script>
+    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+    })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+  
+    ga('create', 'UA-76635236-1', 'auto');
+    ga('send', 'pageview');
+  
+  </script>
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Oh noes, what have you done now?</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+        
+          
+          <a class="page-link" href="/about/">About</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title" itemprop="name headline">Docker Swarm on CoreOS</h1>
+    <p class="post-meta"><time datetime="2016-04-18T20:15:00+02:00" itemprop="datePublished">Apr 18, 2016</time></p>
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Since Docker’s <a href="https://www.docker.com/products/docker-swarm">Swarm</a> became stable with the release of Docker 1.9 last November, quite a few articles have been written discussing ways to setup a cluster for development purposes. None that I’ve found did so on a Linux desktop (they all use <a href="https://www.docker.com/products/docker-machine">Docker Machine</a>), yet this was my predicament and so for future reference and those that will come after me, here is a quick write-up of how I got a multi-node CoreOS cluster running, with Swarm on top.</p>
+
+<p>I wanted to experiment with the new Docker Compose syntax and thought it a good idea to do so on a Swarm cluster. To not have to redeploy my cluster manually, I forked the excellent <a href="https://github.com/coreos/coreos-vagrant">coreos-vagrant</a> and tweaked the configuration a bit so that a Swarm cluster starts up automagically when running <code class="highlighter-rouge">vagrant up</code></p>
+
+<p>There are two files you need to edit to make this work: <code class="highlighter-rouge">config.rb</code> and <code class="highlighter-rouge">user-data</code>, the first is to tell Vagrant what to do, the second contains the cloud-config used to bootstrap the <a href="https://coreos.com/etcd">etcd cluster</a> and configure systemd to start services.</p>
+
+<p>Copy the <code class="highlighter-rouge">config.rb.sample</code> to <code class="highlighter-rouge">config.rb</code> and change the forllowing lines (does not have to be exacly the same, but this was running nicely on my somewhat ageing T420):</p>
+
+<figure class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="c1"># Size of the CoreOS cluster created by Vagrant</span>
+<span class="c1"># The minimum of number of instances for a decent cluster is 3</span>
+<span class="vg">$num_instances</span><span class="o">=</span><span class="mi">5</span>
+<span class="p">.</span><span class="nf">.</span><span class="o">.</span>
+<span class="c1"># Official CoreOS channel from which updates should be downloaded</span>
+<span class="c1"># Living on the edge here (you want to experiment, right?)</span>
+<span class="vg">$update_channel</span><span class="o">=</span><span class="s1">'alpha'</span>
+<span class="p">.</span><span class="nf">.</span><span class="o">.</span>
+<span class="c1"># You can then use the docker tool locally by setting the following env var:</span>
+<span class="c1">#   export DOCKER_HOST='tcp://${public_ipv4}:2375'</span>
+<span class="vg">$expose_docker_tcp</span><span class="o">=</span><span class="mi">2375</span>
+<span class="p">.</span><span class="nf">.</span><span class="o">.</span>
+<span class="c1"># Customize VMs</span>
+<span class="c1">#$vm_gui = false</span>
+<span class="vg">$vm_memory</span> <span class="o">=</span> <span class="mi">1024</span>
+<span class="c1">#$vm_cpus = 1</span></code></pre></figure>
+
+<p>Next, create a file <code class="highlighter-rouge">user-data</code> with this content:</p>
+
+<figure class="highlight"><pre><code class="language-yaml" data-lang="yaml"><span class="c1">#cloud-config</span>
+
+<span class="nn">---</span>
+<span class="s">coreos</span><span class="pi">:</span>
+  <span class="s">etcd2</span><span class="pi">:</span>
+    <span class="c1"># Discovery URL will be replaced on 'vagrant up'</span>
+    <span class="s">discovery</span><span class="pi">:</span> <span class="s">https://discovery.etcd.io/willbereplacedonvagrantup</span>
+    <span class="s">advertise-client-urls</span><span class="pi">:</span> <span class="s">http://$public_ipv4:2379</span>
+    <span class="s">initial-advertise-peer-urls</span><span class="pi">:</span> <span class="s">http://$public_ipv4:2380</span>
+    <span class="s">listen-client-urls</span><span class="pi">:</span> <span class="s">http://0.0.0.0:2379,http://0.0.0.0:4001</span>
+    <span class="s">listen-peer-urls</span><span class="pi">:</span> <span class="s">http://$public_ipv4:2380,http://$public_ipv4:7001</span>
+  <span class="s">units</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="s">name</span><span class="pi">:</span> <span class="s">etcd2.service</span>
+    <span class="s">command</span><span class="pi">:</span> <span class="s">start</span>
+  <span class="pi">-</span> <span class="s">name</span><span class="pi">:</span> <span class="s">docker.service</span>
+    <span class="s">drop-ins</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s">name</span><span class="pi">:</span> <span class="s">custom.conf</span>
+      <span class="s">content</span><span class="pi">:</span> <span class="pi">|</span>
+        <span class="no">[Service]</span>
+        <span class="no"># Start the docker engine on a different port, so that it does not</span>
+        <span class="no"># conflict with the swarm-manager that will be running on 2375. This</span>
+        <span class="no"># way you can interact with the Swarm as if it were a regular instance</span>
+        <span class="no"># with tools like the Docker client or Compose. Also, tell the engine</span>
+        <span class="no"># to advertise itself via etcd.</span>
+        <span class="no">Environment="DOCKER_OPTS=-H=0.0.0.0:2376 -H unix:///var/run/docker.sock --cluster-advertise eth1:2376 --cluster-store etcd://127.0.0.1:2379"</span>
+    <span class="s">command</span><span class="pi">:</span> <span class="s">start</span>
+  <span class="s"># Start a swarm-agent at boot.</span>
+  <span class="s">- name</span><span class="pi">:</span> <span class="s">swarm-agent.service</span>
+    <span class="s">enable</span><span class="pi">:</span> <span class="s">true</span>
+    <span class="s">content</span><span class="pi">:</span> <span class="pi">|</span>
+      <span class="no">[Unit]</span>
+      <span class="no">Description=Docker Swarm agent</span>
+      <span class="no">After=docker.service</span>
+      <span class="no">Requires=docker.service</span>
+
+      <span class="no">[Service]</span>
+      <span class="no">TimeoutStartSec=0</span>
+      <span class="no">ExecStartPre=-/usr/bin/docker kill swarm-agent</span>
+      <span class="no">ExecStartPre=-/usr/bin/docker rm swarm-agent</span>
+      <span class="no">ExecStartPre=/usr/bin/docker pull swarm:latest</span>
+      <span class="no">ExecStart=/usr/bin/docker run -d --name swarm-agent --net=host swarm:latest join --addr=$public_ipv4:2376 etcd://127.0.0.1:2379</span>
+
+      <span class="no">[Install]</span>
+      <span class="no">WantedBy=multi-user.target</span>
+  <span class="c1"># Start a swarm-manager at boot.</span>
+  <span class="pi">-</span> <span class="s">name</span><span class="pi">:</span> <span class="s">swarm-manager.service</span>
+    <span class="s">enable</span><span class="pi">:</span> <span class="s">true</span>
+    <span class="s">content</span><span class="pi">:</span> <span class="pi">|</span>
+      <span class="no">[Unit]</span>
+      <span class="no">Description=Docker Swarm manager</span>
+      <span class="no">After=swarm-agent.service</span>
+      <span class="no">Requires=swarm-agent.service</span>
+
+      <span class="no">[Service]</span>
+      <span class="no">TimeoutStartSec=0</span>
+      <span class="no">ExecStartPre=-/usr/bin/docker kill swarm-manager</span>
+      <span class="no">ExecStartPre=-/usr/bin/docker rm swarm-manager</span>
+      <span class="no">ExecStartPre=/usr/bin/docker pull swarm:latest</span>
+      <span class="no">ExecStart=/usr/bin/docker run -d --name swarm-manager --net=host swarm:latest manage etcd://127.0.0.1:2379</span>
+
+      <span class="no">[Install]</span>
+      <span class="no">WantedBy=multi-user.target</span></code></pre></figure>
+
+<p>As you can see, every node will start both an agent and a manager. The agent must run on every node, but the manager nodes will elect a leader among them. The other nodes will proxy command to and from this leader when spoken to. When the leader is no longer available, the remaining managers elect a new leader. This way the Swarm manager will be fault tolerant.</p>
+
+<p>Now that the configuration has been done, we can start our cluster:</p>
+
+<figure class="highlight"><pre><code class="language-shell" data-lang="shell"><span class="gp">maarten@clunky:~/swarm-vagrant$ </span>vagrant up
+Bringing machine <span class="s1">'core-01'</span> up with <span class="s1">'virtualbox'</span> provider...
+Bringing machine <span class="s1">'core-02'</span> up with <span class="s1">'virtualbox'</span> provider...
+Bringing machine <span class="s1">'core-03'</span> up with <span class="s1">'virtualbox'</span> provider...
+Bringing machine <span class="s1">'core-04'</span> up with <span class="s1">'virtualbox'</span> provider...
+Bringing machine <span class="s1">'core-05'</span> up with <span class="s1">'virtualbox'</span> provider...
+<span class="gp">==&gt; </span>core-01: Importing base box <span class="s1">'coreos-alpha'</span>...
+<span class="gp">==&gt; </span>core-01: Matching MAC address <span class="k">for </span>NAT networking...
+<span class="gp">==&gt; </span>core-01: Checking <span class="k">if </span>box <span class="s1">'coreos-alpha'</span> is up to date...
+<span class="gp">==&gt; </span>core-01: Setting the name of the VM: coreos-vagrant_core-01_1461007486758_85609
+<span class="gp">==&gt; </span>core-01: Clearing any previously <span class="nb">set </span>network interfaces...
+<span class="gp">==&gt; </span>core-01: Preparing network interfaces based on configuration...
+    core-01: Adapter 1: nat
+    core-01: Adapter 2: hostonly
+<span class="gp">==&gt; </span>core-01: Forwarding ports...
+    core-01: 2375 <span class="o">(</span>guest<span class="o">)</span> <span class="o">=</span>&gt; 2375 <span class="o">(</span>host<span class="o">)</span> <span class="o">(</span>adapter 1<span class="o">)</span>
+    core-01: 22 <span class="o">(</span>guest<span class="o">)</span> <span class="o">=</span>&gt; 2222 <span class="o">(</span>host<span class="o">)</span> <span class="o">(</span>adapter 1<span class="o">)</span>
+
+<span class="c"># on and on it goes...</span>
+
+<span class="gp">==&gt; </span>core-05: Running <span class="s1">'pre-boot'</span> VM customizations...
+<span class="gp">==&gt; </span>core-05: Booting VM...
+<span class="gp">==&gt; </span>core-05: Waiting <span class="k">for </span>machine to boot. This may take a few minutes...
+    core-05: SSH address: 127.0.0.1:2203
+    core-05: SSH username: core
+    core-05: SSH auth method: private key
+<span class="gp">==&gt; </span>core-05: Machine booted and ready!
+<span class="gp">==&gt; </span>core-05: Setting hostname...
+<span class="gp">==&gt; </span>core-05: Configuring and enabling network interfaces...
+<span class="gp">==&gt; </span>core-05: Running provisioner: file...
+<span class="gp">==&gt; </span>core-05: Running provisioner: shell...
+    core-05: Running: inline script</code></pre></figure>
+
+<p>For some obscure reason I’ve not yet researched, the at first boot it will not work as expected. The Swarm agent and manager containers will not be running on any of the nodes, but when running <code class="highlighter-rouge">vagrant reload</code> one time, the cluster restarts and you can now export any of the nodes as DOCKER_HOST, like this (assuming a public ip of172.17.8.101): <code class="highlighter-rouge">export DOCKER_HOST=tcp://172.17.8.101:2375</code>. Note that the port is the default port, on which the Docker engine instances are not themselves listening on. You can ommit the port number, I just added it for illustration.</p>
+
+<p>Now, using the client, we can ask for info:</p>
+
+<figure class="highlight"><pre><code class="language-shell" data-lang="shell"><span class="gp">maarten@clunky:~/swarm-vagrant$ </span>docker info
+Containers: 10
+ Running: 10
+ Paused: 0
+ Stopped: 0
+Images: 5
+Server Version: swarm/1.2.0
+Role: primary
+Strategy: spread
+Filters: health, port, dependency, affinity, constraint
+Nodes: 5
+ core-01: 172.17.8.101:2376
+  └ Status: Healthy
+  └ Containers: 2
+  └ Reserved CPUs: 0 / 1
+  └ Reserved Memory: 0 B / 1.022 GiB
+  └ Labels: <span class="nv">executiondriver</span><span class="o">=</span>native-0.2, <span class="nv">kernelversion</span><span class="o">=</span>4.5.0-coreos-r1, <span class="nv">operatingsystem</span><span class="o">=</span>CoreOS 1010.1.0 <span class="o">(</span>MoreOS<span class="o">)</span>, <span class="nv">storagedriver</span><span class="o">=</span>overlay
+  └ Error: <span class="o">(</span>none<span class="o">)</span>
+  └ UpdatedAt: 2016-04-18T19:44:13Z
+  └ ServerVersion: 1.10.3
+ core-02: 172.17.8.102:2376
+  └ Status: Healthy
+  └ Containers: 2
+  └ Reserved CPUs: 0 / 1
+  └ Reserved Memory: 0 B / 1.022 GiB
+  └ Labels: <span class="nv">executiondriver</span><span class="o">=</span>native-0.2, <span class="nv">kernelversion</span><span class="o">=</span>4.5.0-coreos-r1, <span class="nv">operatingsystem</span><span class="o">=</span>CoreOS 1010.1.0 <span class="o">(</span>MoreOS<span class="o">)</span>, <span class="nv">storagedriver</span><span class="o">=</span>overlay
+  └ Error: <span class="o">(</span>none<span class="o">)</span>
+  └ UpdatedAt: 2016-04-18T19:44:30Z
+  └ ServerVersion: 1.10.3
+ core-03: 172.17.8.103:2376
+  └ Status: Healthy
+  └ Containers: 2
+  └ Reserved CPUs: 0 / 1
+  └ Reserved Memory: 0 B / 1.022 GiB
+  └ Labels: <span class="nv">executiondriver</span><span class="o">=</span>native-0.2, <span class="nv">kernelversion</span><span class="o">=</span>4.5.0-coreos-r1, <span class="nv">operatingsystem</span><span class="o">=</span>CoreOS 1010.1.0 <span class="o">(</span>MoreOS<span class="o">)</span>, <span class="nv">storagedriver</span><span class="o">=</span>overlay
+  └ Error: <span class="o">(</span>none<span class="o">)</span>
+  └ UpdatedAt: 2016-04-18T19:43:51Z
+  └ ServerVersion: 1.10.3
+ core-04: 172.17.8.104:2376
+  └ Status: Healthy
+  └ Containers: 2
+  └ Reserved CPUs: 0 / 1
+  └ Reserved Memory: 0 B / 1.022 GiB
+  └ Labels: <span class="nv">executiondriver</span><span class="o">=</span>native-0.2, <span class="nv">kernelversion</span><span class="o">=</span>4.5.0-coreos-r1, <span class="nv">operatingsystem</span><span class="o">=</span>CoreOS 1010.1.0 <span class="o">(</span>MoreOS<span class="o">)</span>, <span class="nv">storagedriver</span><span class="o">=</span>overlay
+  └ Error: <span class="o">(</span>none<span class="o">)</span>
+  └ UpdatedAt: 2016-04-18T19:44:22Z
+  └ ServerVersion: 1.10.3
+ core-05: 172.17.8.105:2376
+  └ Status: Healthy
+  └ Containers: 2
+  └ Reserved CPUs: 0 / 1
+  └ Reserved Memory: 0 B / 1.022 GiB
+  └ Labels: <span class="nv">executiondriver</span><span class="o">=</span>native-0.2, <span class="nv">kernelversion</span><span class="o">=</span>4.5.0-coreos-r1, <span class="nv">operatingsystem</span><span class="o">=</span>CoreOS 1010.1.0 <span class="o">(</span>MoreOS<span class="o">)</span>, <span class="nv">storagedriver</span><span class="o">=</span>overlay
+  └ Error: <span class="o">(</span>none<span class="o">)</span>
+  └ UpdatedAt: 2016-04-18T19:44:32Z
+  └ ServerVersion: 1.10.3
+Plugins: 
+ Volume: 
+ Network: 
+Kernel Version: 4.5.0-coreos-r1
+Operating System: linux
+Architecture: amd64
+CPUs: 5
+Total Memory: 5.112 GiB
+Name: core-01</code></pre></figure>
+
+<p>A healthy cluster! Now you can treat it as a regular Docker instance, except for the new cluster goodies that became available, such as the <a href="https://docs.docker.com/engine/userguide/networking/get-started-overlay">overlay network driver</a>. Building and deploying applications is out of scope for this post, but would make for a fun next one :-)</p>
+
+
+  </div>
+
+</article>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Oh noes, what have you done now?</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Oh noes, what have you done now?</li>
+          <li><a href="mailto:maarten@vanderaart.org">maarten@vanderaart.org</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/maartenvanderaart"><span class="icon icon--github"><svg viewBox="0 0 16 16"><path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/></svg>
+</span><span class="username">maartenvanderaart</span></a>
+
+          </li>
+          
+
+          
+          <li>
+            <a href="https://twitter.com/mraart"><span class="icon icon--twitter"><svg viewBox="0 0 16 16"><path fill="#828282" d="M15.969,3.058c-0.586,0.26-1.217,0.436-1.878,0.515c0.675-0.405,1.194-1.045,1.438-1.809c-0.632,0.375-1.332,0.647-2.076,0.793c-0.596-0.636-1.446-1.033-2.387-1.033c-1.806,0-3.27,1.464-3.27,3.27 c0,0.256,0.029,0.506,0.085,0.745C5.163,5.404,2.753,4.102,1.14,2.124C0.859,2.607,0.698,3.168,0.698,3.767 c0,1.134,0.577,2.135,1.455,2.722C1.616,6.472,1.112,6.325,0.671,6.08c0,0.014,0,0.027,0,0.041c0,1.584,1.127,2.906,2.623,3.206 C3.02,9.402,2.731,9.442,2.433,9.442c-0.211,0-0.416-0.021-0.615-0.059c0.416,1.299,1.624,2.245,3.055,2.271 c-1.119,0.877-2.529,1.4-4.061,1.4c-0.264,0-0.524-0.015-0.78-0.046c1.447,0.928,3.166,1.469,5.013,1.469 c6.015,0,9.304-4.983,9.304-9.304c0-0.142-0.003-0.283-0.009-0.423C14.976,4.29,15.531,3.714,15.969,3.058z"/></svg>
+</span><span class="username">mraart</span></a>
+
+          </li>
+          
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Experiments, so not everybody has to reinvent the wheel all the time. Just sometimes.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

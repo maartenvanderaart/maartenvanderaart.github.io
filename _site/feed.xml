@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Oh noes, what have you done now?</title>
+    <description>Experiments, so not everybody has to reinvent the wheel all the time. Just sometimes.
+</description>
+    <link>http://maarten.vanderaart.org/</link>
+    <atom:link href="http://maarten.vanderaart.org/feed.xml" rel="self" type="application/rss+xml"/>
+    <pubDate>Tue, 19 Apr 2016 22:12:33 +0200</pubDate>
+    <lastBuildDate>Tue, 19 Apr 2016 22:12:33 +0200</lastBuildDate>
+    <generator>Jekyll v3.0.1</generator>
+    
+      <item>
+        <title>Docker Swarm on CoreOS</title>
+        <description>&lt;p&gt;Since Docker’s &lt;a href=&quot;https://www.docker.com/products/docker-swarm&quot;&gt;Swarm&lt;/a&gt; became stable with the release of Docker 1.9 last November, quite a few articles have been written discussing ways to setup a cluster for development purposes. None that I’ve found did so on a Linux desktop (they all use &lt;a href=&quot;https://www.docker.com/products/docker-machine&quot;&gt;Docker Machine&lt;/a&gt;), yet this was my predicament and so for future reference and those that will come after me, here is a quick write-up of how I got a multi-node CoreOS cluster running, with Swarm on top.&lt;/p&gt;
+
+&lt;p&gt;I wanted to experiment with the new Docker Compose syntax and thought it a good idea to do so on a Swarm cluster. To not have to redeploy my cluster manually, I forked the excellent &lt;a href=&quot;https://github.com/coreos/coreos-vagrant&quot;&gt;coreos-vagrant&lt;/a&gt; and tweaked the configuration a bit so that a Swarm cluster starts up automagically when running &lt;code class=&quot;highlighter-rouge&quot;&gt;vagrant up&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;There are two files you need to edit to make this work: &lt;code class=&quot;highlighter-rouge&quot;&gt;config.rb&lt;/code&gt; and &lt;code class=&quot;highlighter-rouge&quot;&gt;user-data&lt;/code&gt;, the first is to tell Vagrant what to do, the second contains the cloud-config used to bootstrap the &lt;a href=&quot;https://coreos.com/etcd&quot;&gt;etcd cluster&lt;/a&gt; and configure systemd to start services.&lt;/p&gt;
+
+&lt;p&gt;Copy the &lt;code class=&quot;highlighter-rouge&quot;&gt;config.rb.sample&lt;/code&gt; to &lt;code class=&quot;highlighter-rouge&quot;&gt;config.rb&lt;/code&gt; and change the forllowing lines (does not have to be exacly the same, but this was running nicely on my somewhat ageing T420):&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-ruby&quot; data-lang=&quot;ruby&quot;&gt;&lt;span class=&quot;c1&quot;&gt;# Size of the CoreOS cluster created by Vagrant&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;# The minimum of number of instances for a decent cluster is 3&lt;/span&gt;
+&lt;span class=&quot;vg&quot;&gt;$num_instances&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;5&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;# Official CoreOS channel from which updates should be downloaded&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;# Living on the edge here (you want to experiment, right?)&lt;/span&gt;
+&lt;span class=&quot;vg&quot;&gt;$update_channel&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;&#39;alpha&#39;&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;# You can then use the docker tool locally by setting the following env var:&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;#   export DOCKER_HOST=&#39;tcp://${public_ipv4}:2375&#39;&lt;/span&gt;
+&lt;span class=&quot;vg&quot;&gt;$expose_docker_tcp&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2375&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;# Customize VMs&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;#$vm_gui = false&lt;/span&gt;
+&lt;span class=&quot;vg&quot;&gt;$vm_memory&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1024&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;#$vm_cpus = 1&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Next, create a file &lt;code class=&quot;highlighter-rouge&quot;&gt;user-data&lt;/code&gt; with this content:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-yaml&quot; data-lang=&quot;yaml&quot;&gt;&lt;span class=&quot;c1&quot;&gt;#cloud-config&lt;/span&gt;
+
+&lt;span class=&quot;nn&quot;&gt;---&lt;/span&gt;
+&lt;span class=&quot;s&quot;&gt;coreos&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt;
+  &lt;span class=&quot;s&quot;&gt;etcd2&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt;
+    &lt;span class=&quot;c1&quot;&gt;# Discovery URL will be replaced on &#39;vagrant up&#39;&lt;/span&gt;
+    &lt;span class=&quot;s&quot;&gt;discovery&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;https://discovery.etcd.io/willbereplacedonvagrantup&lt;/span&gt;
+    &lt;span class=&quot;s&quot;&gt;advertise-client-urls&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;http://$public_ipv4:2379&lt;/span&gt;
+    &lt;span class=&quot;s&quot;&gt;initial-advertise-peer-urls&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;http://$public_ipv4:2380&lt;/span&gt;
+    &lt;span class=&quot;s&quot;&gt;listen-client-urls&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;http://0.0.0.0:2379,http://0.0.0.0:4001&lt;/span&gt;
+    &lt;span class=&quot;s&quot;&gt;listen-peer-urls&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;http://$public_ipv4:2380,http://$public_ipv4:7001&lt;/span&gt;
+  &lt;span class=&quot;s&quot;&gt;units&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt;
+  &lt;span class=&quot;pi&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;etcd2.service&lt;/span&gt;
+    &lt;span class=&quot;s&quot;&gt;command&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;start&lt;/span&gt;
+  &lt;span class=&quot;pi&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;docker.service&lt;/span&gt;
+    &lt;span class=&quot;s&quot;&gt;drop-ins&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt;
+    &lt;span class=&quot;pi&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;custom.conf&lt;/span&gt;
+      &lt;span class=&quot;s&quot;&gt;content&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;pi&quot;&gt;|&lt;/span&gt;
+        &lt;span class=&quot;no&quot;&gt;[Service]&lt;/span&gt;
+        &lt;span class=&quot;no&quot;&gt;# Start the docker engine on a different port, so that it does not&lt;/span&gt;
+        &lt;span class=&quot;no&quot;&gt;# conflict with the swarm-manager that will be running on 2375. This&lt;/span&gt;
+        &lt;span class=&quot;no&quot;&gt;# way you can interact with the Swarm as if it were a regular instance&lt;/span&gt;
+        &lt;span class=&quot;no&quot;&gt;# with tools like the Docker client or Compose. Also, tell the engine&lt;/span&gt;
+        &lt;span class=&quot;no&quot;&gt;# to advertise itself via etcd.&lt;/span&gt;
+        &lt;span class=&quot;no&quot;&gt;Environment=&quot;DOCKER_OPTS=-H=0.0.0.0:2376 -H unix:///var/run/docker.sock --cluster-advertise eth1:2376 --cluster-store etcd://127.0.0.1:2379&quot;&lt;/span&gt;
+    &lt;span class=&quot;s&quot;&gt;command&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;start&lt;/span&gt;
+  &lt;span class=&quot;s&quot;&gt;# Start a swarm-agent at boot.&lt;/span&gt;
+  &lt;span class=&quot;s&quot;&gt;- name&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;swarm-agent.service&lt;/span&gt;
+    &lt;span class=&quot;s&quot;&gt;enable&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;true&lt;/span&gt;
+    &lt;span class=&quot;s&quot;&gt;content&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;pi&quot;&gt;|&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;[Unit]&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;Description=Docker Swarm agent&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;After=docker.service&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;Requires=docker.service&lt;/span&gt;
+
+      &lt;span class=&quot;no&quot;&gt;[Service]&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;TimeoutStartSec=0&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;ExecStartPre=-/usr/bin/docker kill swarm-agent&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;ExecStartPre=-/usr/bin/docker rm swarm-agent&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;ExecStartPre=/usr/bin/docker pull swarm:latest&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;ExecStart=/usr/bin/docker run -d --name swarm-agent --net=host swarm:latest join --addr=$public_ipv4:2376 etcd://127.0.0.1:2379&lt;/span&gt;
+
+      &lt;span class=&quot;no&quot;&gt;[Install]&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;WantedBy=multi-user.target&lt;/span&gt;
+  &lt;span class=&quot;c1&quot;&gt;# Start a swarm-manager at boot.&lt;/span&gt;
+  &lt;span class=&quot;pi&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;swarm-manager.service&lt;/span&gt;
+    &lt;span class=&quot;s&quot;&gt;enable&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;true&lt;/span&gt;
+    &lt;span class=&quot;s&quot;&gt;content&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;pi&quot;&gt;|&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;[Unit]&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;Description=Docker Swarm manager&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;After=swarm-agent.service&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;Requires=swarm-agent.service&lt;/span&gt;
+
+      &lt;span class=&quot;no&quot;&gt;[Service]&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;TimeoutStartSec=0&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;ExecStartPre=-/usr/bin/docker kill swarm-manager&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;ExecStartPre=-/usr/bin/docker rm swarm-manager&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;ExecStartPre=/usr/bin/docker pull swarm:latest&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;ExecStart=/usr/bin/docker run -d --name swarm-manager --net=host swarm:latest manage etcd://127.0.0.1:2379&lt;/span&gt;
+
+      &lt;span class=&quot;no&quot;&gt;[Install]&lt;/span&gt;
+      &lt;span class=&quot;no&quot;&gt;WantedBy=multi-user.target&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;As you can see, every node will start both an agent and a manager. The agent must run on every node, but the manager nodes will elect a leader among them. The other nodes will proxy command to and from this leader when spoken to. When the leader is no longer available, the remaining managers elect a new leader. This way the Swarm manager will be fault tolerant.&lt;/p&gt;
+
+&lt;p&gt;Now that the configuration has been done, we can start our cluster:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span class=&quot;gp&quot;&gt;maarten@clunky:~/swarm-vagrant$ &lt;/span&gt;vagrant up
+Bringing machine &lt;span class=&quot;s1&quot;&gt;&#39;core-01&#39;&lt;/span&gt; up with &lt;span class=&quot;s1&quot;&gt;&#39;virtualbox&#39;&lt;/span&gt; provider...
+Bringing machine &lt;span class=&quot;s1&quot;&gt;&#39;core-02&#39;&lt;/span&gt; up with &lt;span class=&quot;s1&quot;&gt;&#39;virtualbox&#39;&lt;/span&gt; provider...
+Bringing machine &lt;span class=&quot;s1&quot;&gt;&#39;core-03&#39;&lt;/span&gt; up with &lt;span class=&quot;s1&quot;&gt;&#39;virtualbox&#39;&lt;/span&gt; provider...
+Bringing machine &lt;span class=&quot;s1&quot;&gt;&#39;core-04&#39;&lt;/span&gt; up with &lt;span class=&quot;s1&quot;&gt;&#39;virtualbox&#39;&lt;/span&gt; provider...
+Bringing machine &lt;span class=&quot;s1&quot;&gt;&#39;core-05&#39;&lt;/span&gt; up with &lt;span class=&quot;s1&quot;&gt;&#39;virtualbox&#39;&lt;/span&gt; provider...
+&lt;span class=&quot;gp&quot;&gt;==&amp;gt; &lt;/span&gt;core-01: Importing base box &lt;span class=&quot;s1&quot;&gt;&#39;coreos-alpha&#39;&lt;/span&gt;...
+&lt;span class=&quot;gp&quot;&gt;==&amp;gt; &lt;/span&gt;core-01: Matching MAC address &lt;span class=&quot;k&quot;&gt;for &lt;/span&gt;NAT networking...
+&lt;span class=&quot;gp&quot;&gt;==&amp;gt; &lt;/span&gt;core-01: Checking &lt;span class=&quot;k&quot;&gt;if &lt;/span&gt;box &lt;span class=&quot;s1&quot;&gt;&#39;coreos-alpha&#39;&lt;/span&gt; is up to date...
+&lt;span class=&quot;gp&quot;&gt;==&amp;gt; &lt;/span&gt;core-01: Setting the name of the VM: coreos-vagrant_core-01_1461007486758_85609
+&lt;span class=&quot;gp&quot;&gt;==&amp;gt; &lt;/span&gt;core-01: Clearing any previously &lt;span class=&quot;nb&quot;&gt;set &lt;/span&gt;network interfaces...
+&lt;span class=&quot;gp&quot;&gt;==&amp;gt; &lt;/span&gt;core-01: Preparing network interfaces based on configuration...
+    core-01: Adapter 1: nat
+    core-01: Adapter 2: hostonly
+&lt;span class=&quot;gp&quot;&gt;==&amp;gt; &lt;/span&gt;core-01: Forwarding ports...
+    core-01: 2375 &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;guest&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&amp;gt; 2375 &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;host&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;adapter 1&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+    core-01: 22 &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;guest&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&amp;gt; 2222 &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;host&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;adapter 1&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+
+&lt;span class=&quot;c&quot;&gt;# on and on it goes...&lt;/span&gt;
+
+&lt;span class=&quot;gp&quot;&gt;==&amp;gt; &lt;/span&gt;core-05: Running &lt;span class=&quot;s1&quot;&gt;&#39;pre-boot&#39;&lt;/span&gt; VM customizations...
+&lt;span class=&quot;gp&quot;&gt;==&amp;gt; &lt;/span&gt;core-05: Booting VM...
+&lt;span class=&quot;gp&quot;&gt;==&amp;gt; &lt;/span&gt;core-05: Waiting &lt;span class=&quot;k&quot;&gt;for &lt;/span&gt;machine to boot. This may take a few minutes...
+    core-05: SSH address: 127.0.0.1:2203
+    core-05: SSH username: core
+    core-05: SSH auth method: private key
+&lt;span class=&quot;gp&quot;&gt;==&amp;gt; &lt;/span&gt;core-05: Machine booted and ready!
+&lt;span class=&quot;gp&quot;&gt;==&amp;gt; &lt;/span&gt;core-05: Setting hostname...
+&lt;span class=&quot;gp&quot;&gt;==&amp;gt; &lt;/span&gt;core-05: Configuring and enabling network interfaces...
+&lt;span class=&quot;gp&quot;&gt;==&amp;gt; &lt;/span&gt;core-05: Running provisioner: file...
+&lt;span class=&quot;gp&quot;&gt;==&amp;gt; &lt;/span&gt;core-05: Running provisioner: shell...
+    core-05: Running: inline script&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;For some obscure reason I’ve not yet researched, the at first boot it will not work as expected. The Swarm agent and manager containers will not be running on any of the nodes, but when running &lt;code class=&quot;highlighter-rouge&quot;&gt;vagrant reload&lt;/code&gt; one time, the cluster restarts and you can now export any of the nodes as DOCKER_HOST, like this (assuming a public ip of172.17.8.101): &lt;code class=&quot;highlighter-rouge&quot;&gt;export DOCKER_HOST=tcp://172.17.8.101:2375&lt;/code&gt;. Note that the port is the default port, on which the Docker engine instances are not themselves listening on. You can ommit the port number, I just added it for illustration.&lt;/p&gt;
+
+&lt;p&gt;Now, using the client, we can ask for info:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span class=&quot;gp&quot;&gt;maarten@clunky:~/swarm-vagrant$ &lt;/span&gt;docker info
+Containers: 10
+ Running: 10
+ Paused: 0
+ Stopped: 0
+Images: 5
+Server Version: swarm/1.2.0
+Role: primary
+Strategy: spread
+Filters: health, port, dependency, affinity, constraint
+Nodes: 5
+ core-01: 172.17.8.101:2376
+  └ Status: Healthy
+  └ Containers: 2
+  └ Reserved CPUs: 0 / 1
+  └ Reserved Memory: 0 B / 1.022 GiB
+  └ Labels: &lt;span class=&quot;nv&quot;&gt;executiondriver&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;native-0.2, &lt;span class=&quot;nv&quot;&gt;kernelversion&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;4.5.0-coreos-r1, &lt;span class=&quot;nv&quot;&gt;operatingsystem&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;CoreOS 1010.1.0 &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;MoreOS&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;, &lt;span class=&quot;nv&quot;&gt;storagedriver&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;overlay
+  └ Error: &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;none&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+  └ UpdatedAt: 2016-04-18T19:44:13Z
+  └ ServerVersion: 1.10.3
+ core-02: 172.17.8.102:2376
+  └ Status: Healthy
+  └ Containers: 2
+  └ Reserved CPUs: 0 / 1
+  └ Reserved Memory: 0 B / 1.022 GiB
+  └ Labels: &lt;span class=&quot;nv&quot;&gt;executiondriver&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;native-0.2, &lt;span class=&quot;nv&quot;&gt;kernelversion&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;4.5.0-coreos-r1, &lt;span class=&quot;nv&quot;&gt;operatingsystem&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;CoreOS 1010.1.0 &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;MoreOS&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;, &lt;span class=&quot;nv&quot;&gt;storagedriver&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;overlay
+  └ Error: &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;none&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+  └ UpdatedAt: 2016-04-18T19:44:30Z
+  └ ServerVersion: 1.10.3
+ core-03: 172.17.8.103:2376
+  └ Status: Healthy
+  └ Containers: 2
+  └ Reserved CPUs: 0 / 1
+  └ Reserved Memory: 0 B / 1.022 GiB
+  └ Labels: &lt;span class=&quot;nv&quot;&gt;executiondriver&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;native-0.2, &lt;span class=&quot;nv&quot;&gt;kernelversion&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;4.5.0-coreos-r1, &lt;span class=&quot;nv&quot;&gt;operatingsystem&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;CoreOS 1010.1.0 &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;MoreOS&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;, &lt;span class=&quot;nv&quot;&gt;storagedriver&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;overlay
+  └ Error: &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;none&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+  └ UpdatedAt: 2016-04-18T19:43:51Z
+  └ ServerVersion: 1.10.3
+ core-04: 172.17.8.104:2376
+  └ Status: Healthy
+  └ Containers: 2
+  └ Reserved CPUs: 0 / 1
+  └ Reserved Memory: 0 B / 1.022 GiB
+  └ Labels: &lt;span class=&quot;nv&quot;&gt;executiondriver&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;native-0.2, &lt;span class=&quot;nv&quot;&gt;kernelversion&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;4.5.0-coreos-r1, &lt;span class=&quot;nv&quot;&gt;operatingsystem&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;CoreOS 1010.1.0 &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;MoreOS&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;, &lt;span class=&quot;nv&quot;&gt;storagedriver&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;overlay
+  └ Error: &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;none&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+  └ UpdatedAt: 2016-04-18T19:44:22Z
+  └ ServerVersion: 1.10.3
+ core-05: 172.17.8.105:2376
+  └ Status: Healthy
+  └ Containers: 2
+  └ Reserved CPUs: 0 / 1
+  └ Reserved Memory: 0 B / 1.022 GiB
+  └ Labels: &lt;span class=&quot;nv&quot;&gt;executiondriver&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;native-0.2, &lt;span class=&quot;nv&quot;&gt;kernelversion&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;4.5.0-coreos-r1, &lt;span class=&quot;nv&quot;&gt;operatingsystem&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;CoreOS 1010.1.0 &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;MoreOS&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;, &lt;span class=&quot;nv&quot;&gt;storagedriver&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;overlay
+  └ Error: &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;none&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+  └ UpdatedAt: 2016-04-18T19:44:32Z
+  └ ServerVersion: 1.10.3
+Plugins: 
+ Volume: 
+ Network: 
+Kernel Version: 4.5.0-coreos-r1
+Operating System: linux
+Architecture: amd64
+CPUs: 5
+Total Memory: 5.112 GiB
+Name: core-01&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;A healthy cluster! Now you can treat it as a regular Docker instance, except for the new cluster goodies that became available, such as the &lt;a href=&quot;https://docs.docker.com/engine/userguide/networking/get-started-overlay&quot;&gt;overlay network driver&lt;/a&gt;. Building and deploying applications is out of scope for this post, but would make for a fun next one :-)&lt;/p&gt;
+
+</description>
+        <pubDate>Mon, 18 Apr 2016 20:15:00 +0200</pubDate>
+        <link>http://maarten.vanderaart.org/docker/swarm/coreos/2016/04/18/docker-swarm-on-coreos.html</link>
+        <guid isPermaLink="true">http://maarten.vanderaart.org/docker/swarm/coreos/2016/04/18/docker-swarm-on-coreos.html</guid>
+        
+        
+        <category>docker</category>
+        
+        <category>swarm</category>
+        
+        <category>coreos</category>
+        
+      </item>
+    
+  </channel>
+</rss>
