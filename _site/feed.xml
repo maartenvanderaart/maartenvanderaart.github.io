@@ -6,15 +6,15 @@
 </description>
     <link>http://maarten.vanderaart.org/</link>
     <atom:link href="http://maarten.vanderaart.org/feed.xml" rel="self" type="application/rss+xml"/>
-    <pubDate>Tue, 19 Apr 2016 22:12:33 +0200</pubDate>
-    <lastBuildDate>Tue, 19 Apr 2016 22:12:33 +0200</lastBuildDate>
+    <pubDate>Sun, 24 Apr 2016 15:01:28 +0200</pubDate>
+    <lastBuildDate>Sun, 24 Apr 2016 15:01:28 +0200</lastBuildDate>
     <generator>Jekyll v3.0.1</generator>
     
       <item>
         <title>Docker Swarm on CoreOS</title>
         <description>&lt;p&gt;Since Docker’s &lt;a href=&quot;https://www.docker.com/products/docker-swarm&quot;&gt;Swarm&lt;/a&gt; became stable with the release of Docker 1.9 last November, quite a few articles have been written discussing ways to setup a cluster for development purposes. None that I’ve found did so on a Linux desktop (they all use &lt;a href=&quot;https://www.docker.com/products/docker-machine&quot;&gt;Docker Machine&lt;/a&gt;), yet this was my predicament and so for future reference and those that will come after me, here is a quick write-up of how I got a multi-node CoreOS cluster running, with Swarm on top.&lt;/p&gt;
 
-&lt;p&gt;I wanted to experiment with the new Docker Compose syntax and thought it a good idea to do so on a Swarm cluster. To not have to redeploy my cluster manually, I forked the excellent &lt;a href=&quot;https://github.com/coreos/coreos-vagrant&quot;&gt;coreos-vagrant&lt;/a&gt; and tweaked the configuration a bit so that a Swarm cluster starts up automagically when running &lt;code class=&quot;highlighter-rouge&quot;&gt;vagrant up&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;I wanted to experiment with the new Docker Compose syntax and thought it a good idea to do so on a Swarm cluster. To not have to redeploy my cluster manually, I forked the excellent &lt;a href=&quot;https://github.com/coreos/coreos-vagrant&quot;&gt;coreos-vagrant&lt;/a&gt; and tweaked the configuration a bit so that a Swarm cluster starts up automagically when running &lt;code class=&quot;highlighter-rouge&quot;&gt;vagrant up&lt;/code&gt;. You can find my files &lt;a href=&quot;https://github.com/maartenvanderaart/coreos-vagrant&quot;&gt;here&lt;/a&gt;, for reference.&lt;/p&gt;
 
 &lt;p&gt;There are two files you need to edit to make this work: &lt;code class=&quot;highlighter-rouge&quot;&gt;config.rb&lt;/code&gt; and &lt;code class=&quot;highlighter-rouge&quot;&gt;user-data&lt;/code&gt;, the first is to tell Vagrant what to do, the second contains the cloud-config used to bootstrap the &lt;a href=&quot;https://coreos.com/etcd&quot;&gt;etcd cluster&lt;/a&gt; and configure systemd to start services.&lt;/p&gt;
 
@@ -54,6 +54,7 @@
   &lt;span class=&quot;pi&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;etcd2.service&lt;/span&gt;
     &lt;span class=&quot;s&quot;&gt;command&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;start&lt;/span&gt;
   &lt;span class=&quot;pi&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;docker.service&lt;/span&gt;
+    &lt;span class=&quot;s&quot;&gt;command&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;start&lt;/span&gt;
     &lt;span class=&quot;s&quot;&gt;drop-ins&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt;
     &lt;span class=&quot;pi&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;custom.conf&lt;/span&gt;
       &lt;span class=&quot;s&quot;&gt;content&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;pi&quot;&gt;|&lt;/span&gt;
@@ -64,9 +65,9 @@
         &lt;span class=&quot;no&quot;&gt;# with tools like the Docker client or Compose. Also, tell the engine&lt;/span&gt;
         &lt;span class=&quot;no&quot;&gt;# to advertise itself via etcd.&lt;/span&gt;
         &lt;span class=&quot;no&quot;&gt;Environment=&quot;DOCKER_OPTS=-H=0.0.0.0:2376 -H unix:///var/run/docker.sock --cluster-advertise eth1:2376 --cluster-store etcd://127.0.0.1:2379&quot;&lt;/span&gt;
+  &lt;span class=&quot;c1&quot;&gt;# Start a swarm-agent at boot.&lt;/span&gt;
+  &lt;span class=&quot;pi&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;swarm-agent.service&lt;/span&gt;
     &lt;span class=&quot;s&quot;&gt;command&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;start&lt;/span&gt;
-  &lt;span class=&quot;s&quot;&gt;# Start a swarm-agent at boot.&lt;/span&gt;
-  &lt;span class=&quot;s&quot;&gt;- name&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;swarm-agent.service&lt;/span&gt;
     &lt;span class=&quot;s&quot;&gt;enable&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;true&lt;/span&gt;
     &lt;span class=&quot;s&quot;&gt;content&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;pi&quot;&gt;|&lt;/span&gt;
       &lt;span class=&quot;no&quot;&gt;[Unit]&lt;/span&gt;
@@ -85,6 +86,7 @@
       &lt;span class=&quot;no&quot;&gt;WantedBy=multi-user.target&lt;/span&gt;
   &lt;span class=&quot;c1&quot;&gt;# Start a swarm-manager at boot.&lt;/span&gt;
   &lt;span class=&quot;pi&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;swarm-manager.service&lt;/span&gt;
+    &lt;span class=&quot;s&quot;&gt;command&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;start&lt;/span&gt;
     &lt;span class=&quot;s&quot;&gt;enable&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;true&lt;/span&gt;
     &lt;span class=&quot;s&quot;&gt;content&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;pi&quot;&gt;|&lt;/span&gt;
       &lt;span class=&quot;no&quot;&gt;[Unit]&lt;/span&gt;
@@ -139,7 +141,7 @@ Bringing machine &lt;span class=&quot;s1&quot;&gt;&#39;core-05&#39;&lt;/span&gt;
 &lt;span class=&quot;gp&quot;&gt;==&amp;gt; &lt;/span&gt;core-05: Running provisioner: shell...
     core-05: Running: inline script&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
 
-&lt;p&gt;For some obscure reason I’ve not yet researched, the at first boot it will not work as expected. The Swarm agent and manager containers will not be running on any of the nodes, but when running &lt;code class=&quot;highlighter-rouge&quot;&gt;vagrant reload&lt;/code&gt; one time, the cluster restarts and you can now export any of the nodes as DOCKER_HOST, like this (assuming a public ip of172.17.8.101): &lt;code class=&quot;highlighter-rouge&quot;&gt;export DOCKER_HOST=tcp://172.17.8.101:2375&lt;/code&gt;. Note that the port is the default port, on which the Docker engine instances are not themselves listening on. You can ommit the port number, I just added it for illustration.&lt;/p&gt;
+&lt;p&gt;You can now export any of the nodes as DOCKER_HOST, like this (assuming a public ip of 172.17.8.101): &lt;code class=&quot;highlighter-rouge&quot;&gt;export DOCKER_HOST=tcp://172.17.8.101:2375&lt;/code&gt;. Note that the port is the default port, on which the Docker engine instances are not themselves listening on. You can ommit the port number, I just added it for illustration.&lt;/p&gt;
 
 &lt;p&gt;Now, using the client, we can ask for info:&lt;/p&gt;
 

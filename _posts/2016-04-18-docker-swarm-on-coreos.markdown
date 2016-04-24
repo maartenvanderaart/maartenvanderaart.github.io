@@ -6,7 +6,7 @@ categories: docker swarm coreos
 ---
 Since Docker's [Swarm][docker-swarm] became stable with the release of Docker 1.9 last November, quite a few articles have been written discussing ways to setup a cluster for development purposes. None that I've found did so on a Linux desktop (they all use [Docker Machine][docker-machine]), yet this was my predicament and so for future reference and those that will come after me, here is a quick write-up of how I got a multi-node CoreOS cluster running, with Swarm on top.
 
-I wanted to experiment with the new Docker Compose syntax and thought it a good idea to do so on a Swarm cluster. To not have to redeploy my cluster manually, I forked the excellent [coreos-vagrant][coreos-vagrant] and tweaked the configuration a bit so that a Swarm cluster starts up automagically when running ```vagrant up```
+I wanted to experiment with the new Docker Compose syntax and thought it a good idea to do so on a Swarm cluster. To not have to redeploy my cluster manually, I forked the excellent [coreos-vagrant][coreos-vagrant] and tweaked the configuration a bit so that a Swarm cluster starts up automagically when running ```vagrant up```. You can find my files [here][coreos-vagrant-fork], for reference.
 
 There are two files you need to edit to make this work: ```config.rb``` and ```user-data```, the first is to tell Vagrant what to do, the second contains the cloud-config used to bootstrap the [etcd cluster][etcd] and configure systemd to start services. 
 
@@ -48,6 +48,7 @@ coreos:
   - name: etcd2.service
     command: start
   - name: docker.service
+    command: start
     drop-ins:
     - name: custom.conf
       content: |
@@ -58,9 +59,9 @@ coreos:
         # with tools like the Docker client or Compose. Also, tell the engine
         # to advertise itself via etcd.
         Environment="DOCKER_OPTS=-H=0.0.0.0:2376 -H unix:///var/run/docker.sock --cluster-advertise eth1:2376 --cluster-store etcd://127.0.0.1:2379"
-    command: start
   # Start a swarm-agent at boot.
   - name: swarm-agent.service
+    command: start
     enable: true
     content: |
       [Unit]
@@ -79,6 +80,7 @@ coreos:
       WantedBy=multi-user.target
   # Start a swarm-manager at boot.
   - name: swarm-manager.service
+    command: start
     enable: true
     content: |
       [Unit]
@@ -136,7 +138,7 @@ Bringing machine 'core-05' up with 'virtualbox' provider...
     core-05: Running: inline script
 {% endhighlight %}
 
-For some obscure reason I've not yet researched, the at first boot it will not work as expected. The Swarm agent and manager containers will not be running on any of the nodes, but when running ```vagrant reload``` one time, the cluster restarts and you can now export any of the nodes as DOCKER_HOST, like this (assuming a public ip of172.17.8.101): ```export DOCKER_HOST=tcp://172.17.8.101:2375```. Note that the port is the default port, on which the Docker engine instances are not themselves listening on. You can ommit the port number, I just added it for illustration.
+You can now export any of the nodes as DOCKER_HOST, like this (assuming a public ip of 172.17.8.101): ```export DOCKER_HOST=tcp://172.17.8.101:2375```. Note that the port is the default port, on which the Docker engine instances are not themselves listening on. You can ommit the port number, I just added it for illustration.
 
 Now, using the client, we can ask for info:
 
@@ -216,3 +218,4 @@ A healthy cluster! Now you can treat it as a regular Docker instance, except for
 [coreos-vagrant]:	https://github.com/coreos/coreos-vagrant
 [etcd]:			https://coreos.com/etcd
 [overlay-network]:	https://docs.docker.com/engine/userguide/networking/get-started-overlay
+[coreos-vagrant-fork]:	https://github.com/maartenvanderaart/coreos-vagrant
